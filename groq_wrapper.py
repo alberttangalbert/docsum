@@ -1,6 +1,6 @@
 import os
 import time
-from groq import Groq, RateLimitError
+from groq import Groq, RateLimitError, InternalServerError
 import requests
 
 # https://console.groq.com/docs/rate-limits
@@ -68,7 +68,7 @@ class Groq_Wrapper:
         """
         self.tokens_remaining -= usage.prompt_tokens + usage.completion_tokens
 
-    def summarize_chunk(self, chunk, max_retries=3, final_summary=False):
+    def summarize_chunk(self, chunk, max_retries=5, final_summary=False):
         """
         We need to call the split_document_into_chunks on text.
         Then for each paragraph in the output list,
@@ -119,6 +119,13 @@ class Groq_Wrapper:
                 retry_after = float(retry_after) if retry_after else 10.0
                 print(f"Rate limit exceeded. Sleeping for {retry_after} seconds.")
                 time.sleep(retry_after)
+
+                retries += 1
+            
+            except InternalServerError as internal_err:
+                # Handle internal server error (503)
+                print("Internal server error. Service is unavailable. Retrying in 10 seconds.")
+                time.sleep(10)  # Wait for 10 seconds before retrying
 
                 retries += 1
 
