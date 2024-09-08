@@ -1,4 +1,5 @@
 import argparse
+import chardet 
 
 from groq_wrapper import Groq_Wrapper
 
@@ -34,8 +35,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # read text input file 
-    with open(args.filename, encoding="utf-8") as f:
-        text = f.read()
+    with open('your_file', 'rb') as f:
+        text = chardet.detect(f.read())
 
     # split text into chunks 
     max_token_size = 18000
