@@ -44,7 +44,7 @@ if __name__ == '__main__':
     # summarize chunks into one ful
     groq_wrapper = Groq_Wrapper()
     summary = groq_wrapper.summarize_chunks(chunks)
-
+    
     print("Summary:")
     print("--------\n")
     print(summary)
