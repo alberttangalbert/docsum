@@ -113,7 +113,10 @@ class Groq_Wrapper:
                 return summary
             
             except RateLimitError as rate_err:
-                retry_after = float(rate_err.args[0]['error']['message'].split('in ')[1].split('s')[0])
+                error_message = rate_err.args[0] if isinstance(rate_err.args[0], dict) else {}
+                retry_after = error_message.get('error', {}).get('message', '').split('in ')[-1].split('s')[0]
+
+                retry_after = float(retry_after) if retry_after else 10.0
                 print(f"Rate limit exceeded. Sleeping for {retry_after} seconds.")
                 time.sleep(retry_after)
 
