@@ -35,36 +35,51 @@ class Groq_Wrapper:
             self.tokens_remaining = token_limit
     
     
-    def summarize_chunk(self, chunk):
+    def summarize_chunk(self, chunk, max_retries=3):
         """
         Summarizes an individual chunk, ensuring rate limits are respected.
+        Retries the request if rate limits are exceeded, waiting 10 seconds before retrying.
         """
-        self.enforce_rate_limits()
+        retries = 0
+        while retries < max_retries:
+            try:
+                self.enforce_rate_limits()
 
-        chat_completion = self.client.chat.completions.create(
-            messages=[
-                {
-                    'role': 'system',
-                    'content': (
-                        'Summarize the input text below. '
-                        'Limit the summary to 1 paragraph.'
-                        'Just output the summary do not return any commentary or other remarks.'
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": chunk,
-                }
-            ],
-            model="llama3-8b-8192",
-        )
-        summary = chat_completion.choices[0].message.content
-        
-        # Update remaining requests and tokens
-        self.requests_remaining -= 1
-        self.tokens_remaining -= len(chunk.split())
-        
-        return summary
+                # Make the API call to summarize the chunk
+                chat_completion = self.client.chat.completions.create(
+                    messages=[
+                        {
+                            'role': 'system',
+                            'content': (
+                                'Summarize the input text below. '
+                                'Limit the summary to 1 paragraph.'
+                                'Just output the summary, do not return any commentary or other remarks.'
+                            )
+                        },
+                        {
+                            "role": "user",
+                            "content": chunk,
+                        }
+                    ],
+                    model="llama3-8b-8192",
+                )
+                summary = chat_completion.choices[0].message.content
+                
+                # Update remaining requests and tokens
+                self.requests_remaining -= 1
+                self.tokens_remaining -= len(chunk.split())
+                
+                return summary  # Return the summary if successful
+            
+            except Exception as e:
+                # Check if the error is due to rate limiting
+                if 'rate limit' in str(e).lower():
+                    retries += 1
+                    print(f"Rate limit exceeded. Retrying in 10 seconds... ({retries}/{max_retries})")
+                    time.sleep(token_reset_time + 3)  
+                else:
+                    # Raise other exceptions
+                    raise e
     
     def summarize_chunks(self, chunks):
         """
