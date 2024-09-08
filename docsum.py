@@ -35,14 +35,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # read text input file 
-    with open('your_file', 'rb') as f:
+    with open(args.filename, 'rb') as f:
         text = chardet.detect(f.read())
 
     # split text into chunks 
     max_token_size = 18000
     chunks = split_text(text, max_token_size)
 
-    # summarize chunks into one ful
+    # summarize chunks into one full
     groq_wrapper = Groq_Wrapper()
     summary = groq_wrapper.summarize_chunks(chunks)
     
