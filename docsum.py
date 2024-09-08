@@ -48,7 +48,7 @@ if __name__ == '__main__':
             text = f.read()
 
     # split text into chunks 
-    max_token_size = 18000
+    max_token_size = 5000
     chunks = split_text(text, max_token_size)
 
     # summarize chunks into one full
