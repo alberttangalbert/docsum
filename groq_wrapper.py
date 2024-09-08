@@ -73,13 +73,9 @@ class Groq_Wrapper:
             
             except Exception as e:
                 # Check if the error is due to rate limiting
-                if 'rate limit' in str(e).lower():
-                    retries += 1
-                    print(f"Rate limit exceeded. Retrying in 10 seconds... ({retries}/{max_retries})")
-                    time.sleep(token_reset_time + 3)  
-                else:
-                    # Raise other exceptions
-                    raise e
+                retries += 1
+                print(f"Rate limit exceeded. Retrying in 10 seconds... ({retries}/{max_retries})")
+                time.sleep(token_reset_time + 3)  
     
     def summarize_chunks(self, chunks):
         """
