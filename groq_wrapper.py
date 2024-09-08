@@ -1,8 +1,7 @@
 import os
 import time
-from groq import Groq
+from groq import Groq, RateLimitError
 import requests
-import re 
 
 # https://console.groq.com/docs/rate-limits
 # Requests Per Day (RPD)
@@ -113,10 +112,19 @@ class Groq_Wrapper:
 
                 return summary
             
+            except RateLimitError as rate_err:
+                retry_after = float(rate_err.args[0]['error']['message'].split('in ')[1].split('s')[0])
+                print(f"Rate limit exceeded. Sleeping for {retry_after} seconds.")
+                time.sleep(retry_after)
+
+                retries += 1
+
             except requests.exceptions.HTTPError as http_err:
                 secs_to_sleep = int(http_err.response.headers.get('retry-after', 10))
-                print(f"Rate limit exceeded. Sleeping for {secs_to_sleep} seconds.")
+                print(f"HTTP Error. Sleeping for {secs_to_sleep} seconds.")
                 time.sleep(secs_to_sleep)
+
+                retries += 1
                 
         return ""
 
