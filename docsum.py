@@ -2,27 +2,35 @@ import os
 from groq import Groq
 import argparse
 
-def split_document_into_chunks(text):
-    r'''
-    Split the input text into smaller chunks so that an LLM can process those chunks individually.
+# https://console.groq.com/docs/rate-limits
+request_limit = 14400  # Requests per day limit
+token_limit = 18000  # Tokens per minute limit
+requests_remaining = 14370  # Remaining requests per day
+tokens_remaining = 17997  # Remaining tokens per minute
+request_reset_time = 179.56  # Time to reset requests (in seconds)
+token_reset_time = 7.66  # Time to reset tokens (in seconds)
 
-    >>> split_document_into_chunks('This is a sentence.\n\nThis is another paragraph.')
-    ['This is a sentence.', 'This is another paragraph.']
-    >>> split_document_into_chunks('This is a sentence.\n\nThis is another paragraph.\n\nThis is a third paragraph.')
-    ['This is a sentence.', 'This is another paragraph.', 'This is a third paragraph.']
-    >>> split_document_into_chunks('This is a sentence.')
-    ['This is a sentence.']
-    >>> split_document_into_chunks('')
-    []
-    >>> split_document_into_chunks('This is a sentence.\n')
-    ['This is a sentence.']
-    >>> split_document_into_chunks('This is a sentence.\n\n')
-    []
-    >>> split_document_into_chunks('This is a sentence.\n\nThis is another paragraph.\n\n')
-    ['This is a sentence.', 'This is another paragraph.']''
-
-    '''
-    return text.split('\n\n')
+def split_document_into_chunks(text, max_token_size=token_limit):
+    """
+    Split the text into chunks with each chunk having no more than max_token_size tokens.
+    """
+    chunks = []
+    current_chunk = []
+    current_chunk_size = 0
+    for word in text.split():
+        # Approximate tokens by word length
+        if current_chunk_size + len(word) > max_token_size:
+            chunks.append(' '.join(current_chunk))
+            current_chunk = [word]
+            current_chunk_size = len(word)
+        else:
+            current_chunk.append(word)
+            current_chunk_size += len(word)
+    
+    if current_chunk:
+        chunks.append(' '.join(current_chunk))
+    
+    return chunks
 
 def summarize(client, text):
     chat_completion = client.chat.completions.create(
