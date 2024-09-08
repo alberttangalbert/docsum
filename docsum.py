@@ -34,7 +34,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # read text input file 
-    with open(args.filename) as f:
+    with open(args.filename, encoding="utf-8") as f:
         text = f.read()
 
     # split text into chunks 
