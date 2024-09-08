@@ -1,59 +1,98 @@
 import os
+import time
 from groq import Groq
-import time 
+import requests
+import re 
 
 # https://console.groq.com/docs/rate-limits
-request_limit = 14400  # Requests per day limit
-token_limit = 18000  # Tokens per minute limit
-requests_remaining = 14370  # Remaining requests per day
-tokens_remaining = 17997  # Remaining tokens per minute
-request_reset_time = 179.56  # Time to reset requests (in seconds)
-token_reset_time = 7.66  # Time to reset tokens (in seconds)
+# Requests Per Day (RPD)
+request_limit = 14400
+# Tokens Per Minute (TPM)  
+token_limit = 18000    
 
 class Groq_Wrapper:
     def __init__(self):
-        # initilize groq client 
         self.client = Groq(
-            api_key=os.environ.get("GROQ_API_KEY"),
+            api_key=os.environ.get("GROQ_API_KEY")
         )
-        # used to keep track of the number of requests remaining in at current rate
-        self.requests_remaining = requests_remaining
-        self.tokens_remaining = tokens_remaining
+        self.requests_remaining = request_limit
+        self.tokens_remaining = token_limit
+        self.request_reset_time = 0
+        self.token_reset_time = 0
 
     def enforce_rate_limits(self):
         """
-        Enforce rate limits based on remaining requests and tokens.
+        Stall script if rate limits are hit 
         """
-        if self.requests_remaining <= 0:
-            print(f"Requests exhausted. Sleeping for {request_reset_time} seconds.")
-            time.sleep(request_reset_time)
+        if self.requests_remaining < 1:
+            print(f"Requests used up! Sleeping for {self.request_reset_time} seconds.")
+            time.sleep(self.request_reset_time)
             self.requests_remaining = request_limit
         
-        if self.tokens_remaining <= 0:
-            print(f"Tokens exhausted. Sleeping for {token_reset_time} seconds.")
-            time.sleep(token_reset_time)
+        if self.tokens_remaining < 1:
+            print(f"Tokens used up! Sleeping for {self.token_reset_time} seconds.")
+            time.sleep(self.token_reset_time)
             self.tokens_remaining = token_limit
-    
-    
-    def summarize_chunk(self, chunk, max_retries=3):
+
+    def str_time_to_seconds(self, time_str):
         """
-        Summarizes an individual chunk, ensuring rate limits are respected.
-        Retries the request if rate limits are exceeded, waiting 10 seconds before retrying.
+        Converts time in str '1m5.583s' or '7.66s' to seconds as a float.
+        """
+        minutes = 0
+        seconds = 0
+        
+        if 'm' in time_str:
+            minutes_part, time_str = time_str.split('m')
+            minutes = int(minutes_part)
+        
+        if 's' in time_str:
+            seconds = float(time_str.replace('s', ''))
+        
+        return minutes * 60 + seconds
+
+    def update_rate_limits_from_headers(self, headers):
+        """
+        Update rate limit information from API response headers.
+        """
+        self.requests_remaining = int(headers.get("x-ratelimit-remaining-requests", self.requests_remaining))
+        self.tokens_remaining = int(headers.get("x-ratelimit-remaining-tokens", self.tokens_remaining))
+        
+        request_reset_time_str = headers.get("x-ratelimit-reset-requests", "0")
+        token_reset_time_str = headers.get("x-ratelimit-reset-tokens", "0")
+        
+        self.request_reset_time = self.str_time_to_seconds(request_reset_time_str)
+        self.token_reset_time = self.str_time_to_seconds(token_reset_time_str)
+
+    def update_tokens_used(self, usage):
+        """
+        Update remaining tokens
+        """
+        self.tokens_remaining -= usage.prompt_tokens + usage.completion_tokens
+
+    def summarize_chunk(self, chunk, max_retries=3, final_summary=False):
+        """
+        We need to call the split_document_into_chunks on text.
+        Then for each paragraph in the output list,
+        call the LLM code below to summarize it.
+        Put the summary into a new list.
+        Concatenate that new list into one smaller document.
+        Recall the LLM code below on the new smaller document.
         """
         retries = 0
         while retries < max_retries:
             try:
                 self.enforce_rate_limits()
 
-                # Make the API call to summarize the chunk
-                chat_completion = self.client.chat.completions.create(
+                response = self.client.chat.completions.with_raw_response.create(
                     messages=[
                         {
                             'role': 'system',
                             'content': (
-                                'Summarize the input text below. '
-                                'Limit the summary to 1 paragraph.'
-                                'Just output the summary, do not return any commentary or other remarks.'
+                                'Summarize the given text. '
+                                'Limit the summary to 1 '
+                                f'{["sentence", "5 sentence pargraph"][final_summary]}. '
+                                'Just output the summary, do not return any commentary, remarks '
+                                ', or other text.'
                             )
                         },
                         {
@@ -63,32 +102,36 @@ class Groq_Wrapper:
                     ],
                     model="llama3-8b-8192",
                 )
-                summary = chat_completion.choices[0].message.content
                 
-                # Update remaining requests and tokens
+                completion = response.parse() 
+                summary = completion.choices[0].message.content
+                
+
                 self.requests_remaining -= 1
-                self.tokens_remaining -= len(chunk.split())
-                
-                return summary  # Return the summary if successful
+                self.update_tokens_used(completion.usage)
+                self.update_rate_limits_from_headers(response.headers)
+
+                return summary
             
-            except Exception as e:
-                # Check if the error is due to rate limiting
-                retries += 1
-                print(f"Rate limit exceeded. Retrying in 10 seconds... ({retries}/{max_retries})")
-                time.sleep(token_reset_time + 3)  
-    
-    def summarize_chunks(self, chunks):
-        """
-        Break down the large text into chunks and summarize them.
-        Then summarize the chunk summaries into a final summary.
-        """
+            except requests.exceptions.HTTPError as http_err:
+                secs_to_sleep = int(http_err.response.headers.get('retry-after', 10))
+                print(f"Rate limit exceeded. Sleeping for {secs_to_sleep} seconds.")
+                time.sleep(secs_to_sleep)
+                
+        return ""
+
+    def summarize_chunks(self, chunks, verbose=True):
         # Summarize each chunk
         chunk_summaries = []
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             summary = self.summarize_chunk(chunk)
+            if verbose:
+                print(f"Chunk {i} Summary")
+                print(summary)
+                print()
             chunk_summaries.append(summary)
         
         # Summarize the summaries
-        final_summary = self.summarize_chunk(' '.join(chunk_summaries))
+        final_summary = self.summarize_chunk(' '.join(chunk_summaries), final_summary=True)
         
         return final_summary
