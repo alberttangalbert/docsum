@@ -38,8 +38,14 @@ if __name__ == '__main__':
     with open(args.filename, 'rb') as f:
         encoding = chardet.detect(f.read())["encoding"]
 
-    with open(args.filename, 'r', encoding=encoding) as f:
-        text = f.read()
+    try:
+        with open(args.filename, 'r', encoding=encoding, errors='replace') as f:
+            text = f.read()
+    except UnicodeDecodeError as e:
+        print(f"UnicodeDecodeError: {e}")
+        # try reading with a fallback encoding if detection fails
+        with open(args.filename, 'r', encoding='ISO-8859-1', errors='replace') as f:
+            text = f.read()
 
     # split text into chunks 
     max_token_size = 18000
