@@ -36,7 +36,10 @@ if __name__ == '__main__':
 
     # read text input file 
     with open(args.filename, 'rb') as f:
-        text = chardet.detect(f.read())
+        encoding = chardet.detect(f.read())["encoding"]
+
+    with open(args.filename, 'r', encoding=encoding) as f:
+        text = f.read()
 
     # split text into chunks 
     max_token_size = 18000
