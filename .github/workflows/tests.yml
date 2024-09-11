@@ -29,4 +29,4 @@ jobs:
           python3 -m doctest docsum.py
       - name: run all files
         run: |
-          for file in docs/*; do python3 docsum.py ${file}; done
+          for file in docsum/docs/*; do python3 docsum/docsum.py ${file}; done
